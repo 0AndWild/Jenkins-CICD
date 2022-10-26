@@ -1,0 +1,116 @@
+plugins {
+    id 'org.springframework.boot' version '2.7.5'
+    id 'io.spring.dependency-management' version '1.0.15.RELEASE'
+    id 'java'
+    //Jacoco 플러그인 추가
+    id 'jacoco'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '11'
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.projectlombok:lombok'
+    runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'com.mysql:mysql-connector-j'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+//jacoco
+jacoco {
+    toolVersion = '0.8.7'
+}
+
+//Jacoco 추가 (추가작업 필요)
+jacocoTestReport {
+    dependsOn test
+    reports {
+        html.enabled true
+        xml.enabled true
+        csv.enabled true
+    }
+    //afterEvaluate는 gradle의 빌드 라이프 사이클에 대한 메서드로 프로젝트가 평가된 후 실행할 수 있게 해줌
+    afterEvaluate {
+        classDirectories.setFrom(
+                files(classDirectories.files.collect {
+                    fileTree(dir: it, excludes: [
+                            '**/SpringInitProjectApplication*',
+                            '**/*Request*',
+                            '**/*Response*',
+                            '**/*Dto*',
+                            '**/*OAuthClient*',
+                            '**/*Interceptor*',
+                            '**/*Exception*',
+                            '**/*Pagination*',
+                            "**/Q*.class"
+                    ])
+                })
+        )
+    }
+    finalizedBy 'jacocoTestCoverageVerification'
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            element = 'CLASS'
+            enabled = true
+            //라인커버리지 제한 80%
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = 0.80
+            }
+            //메서드커버리지 제한 80%
+            limit {
+                counter = 'METHOD'
+                value = 'COVEREDRATIO'
+                minimum = 0.80
+            }
+//            // 브랜치 커버리지 제한 80%
+//            limit {
+//                counter = 'BRANCH'
+//                value = 'COVEREDRATIO'
+//                minimum = 0.80
+//            }
+//            // 빈 줄을 제외한 코드의 라인수를 최대 200라인으로 제한
+//            limit {
+//                counter = 'LINE'
+//                value = 'TOTALCOUNT'
+//                maximum = 200
+//            }
+            //커버리지를 측정할 때 제외할 클래스를 지정 - 패키지 레벨의 경로로 지정하여야 하고 경로에는 * 과 ?를 사용할 수 있음
+            //ex) 패키지+클래스명
+            excludes = [
+                    '**.*SpringInitProjectApplication*',
+                    '**.*Request*',
+                    '**.*Response*',
+                    '**.*Dto*',
+                    '**.*OAuthClient*',
+                    '**.*Interceptor*',
+                    '**.*Exception*',
+                    '**/*Pagination*',
+                    "**/Q*.class"
+            ]
+        }
+    }
+}

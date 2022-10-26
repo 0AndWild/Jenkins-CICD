@@ -1,0 +1,15 @@
+version: '3.1'
+
+services:
+
+  api:
+    image: gunyoung/dev
+
+    container_name: springboot-blue
+
+    environment:
+      - "SPRING_PROFILES_ACTIVE=dev1"
+      - LANG=ko_KR.UTF-8
+
+    ports:
+      - '8082:8081'
