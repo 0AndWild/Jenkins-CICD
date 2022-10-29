@@ -58,23 +58,24 @@ pipeline {
             }
             post{
                 success {
-                    sh 'echo "Successfully Cloned Repository"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
                         message: "Gitea Checkout에 성공하였습니다."
                     )
+                    echo "Successfully Cloned Repository"
                 }
                 failure {
-                    sh 'echo "Fail Cloned Repository'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
                         message: "Gitea Checkout에 실패하였습니다.\n" +
                         "\n" +
                         "<-More info->\n" +
-                        "${env.BUILD_URL}console"
+                        "${env.BUILD_URL}console\n" +
+                        "=================================================================="
                     )
+                    echo "Fail Cloned Repository"
                 }
             }
         }
@@ -89,15 +90,14 @@ pipeline {
             }
             post {
                 success {
-                    sh 'echo "Build Gradle Success"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
                         message: "Build & Test 에 성공하였습니다."
                     )
+                    echo "Build Gradle Success"
                 }
                 failure {
-                    sh 'echo "Build Gradle Fail"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
@@ -105,7 +105,9 @@ pipeline {
                         "\n" +
                         "<-More info->\n" +
                         "${env.BUILD_URL}console"
+                        "=================================================================="
                     )
+                    echo "Build Gradle Fail"
                 }
             }
         }
@@ -122,15 +124,14 @@ pipeline {
             }
             post{
                 success {
-                    sh 'echo "Success sonarqube analysis"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
                         message: "SonarQube Scanning 을 성공하였습니다."
                     )
+                    echo "Success sonarqube analysis"
                 }
                 failure {
-                    sh 'echo "Fail sonarqube analysis'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
@@ -138,7 +139,9 @@ pipeline {
                         "\n" +
                         "<-More info->\n" +
                         "${env.BUILD_URL}console"
+                        "=================================================================="
                     )
+                    echo "Fail sonarqube analysis"
                 }
             }
         }
@@ -171,7 +174,6 @@ pipeline {
                     )
                 }
                 failure {
-                    sh 'echo "Fail sonarqube analysis'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
@@ -179,7 +181,9 @@ pipeline {
                         "\n" +
                         "<-More info->\n" +
                         "${env.BUILD_URL}console"
+                        "=================================================================="
                     )
+                    echo "Fail sonarqube analysis"
                 }
             }
         }
@@ -194,15 +198,14 @@ pipeline {
             }
             post {
                 success {
-                    sh 'echo "Successfully Build Docker"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
                         message: "Docker Image Build 를 성공하였습니다."
                     )
+                    echo "Successfully Build Docker"
                 }
                 failure {
-                    sh 'echo "Build Docker Fail"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
@@ -210,7 +213,9 @@ pipeline {
                         "\n" +
                         "<-More info->\n" +
                         "${env.BUILD_URL}console"
+                        "=================================================================="
                     )
+                    echo "Build Docker Fail"
                 }
             }
         }
@@ -233,6 +238,7 @@ pipeline {
                         color: SLACK_SUCCESS_COLOR,
                         message: "Docker registry 에 Image 를 성공적으로 push 하였습니다."
                     )
+                    echo "Push Docker Success"
                 }
                 failure {
                     error 'This Image Push Fail'
@@ -243,7 +249,9 @@ pipeline {
                         "\n" +
                         "<-More info->\n" +
                         "${env.BUILD_URL}console"
+                        "=================================================================="
                     )
+                    echo "Push Docker Fail"
                 }
             }
         }
@@ -276,15 +284,14 @@ pipeline {
             }
             post {
                 success {
-                    sh 'echo "Completed Remote Server Docker pull"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
                         message: "Docker pull & Deploy 를 성공하였습니다."
                     )
+                    echo "Completed Remote Server Docker pull"
                 }
                 failure {
-                    sh 'echo "Fail Remote Server Docker Pull"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
@@ -292,7 +299,9 @@ pipeline {
                         "\n" +
                         "<-More info->\n" +
                         "${env.BUILD_URL}console"
+                        "=================================================================="
                     )
+                    echo "Fail Remote Server Docker Pull"
                 }
             }
         }
