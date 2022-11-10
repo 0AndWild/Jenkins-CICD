@@ -1,0 +1,15 @@
+version: '3.1'
+
+services:
+
+  api:
+    image: gunyoung/dev:latest
+
+    container_name: springboot-green-b
+
+    environment:
+      - "SPRING_PROFILES_ACTIVE=operation1"
+      - LANG=ko_KR.UTF-8
+
+    ports:
+      - '8083:8180'

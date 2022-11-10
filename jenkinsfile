@@ -1,20 +1,21 @@
 pipeline {
+
     agent any
 
     stages {
+        //공통사용 항목 변수 지정 및 build 유발자와 commit 내역을 함께 Slack 알림으로 전송
         stage("Set Variable") {
-            //공통사용 항목 변수 지정 및 build 유발자와 commit 내역을 함께 Slack 알림으로 전송
             steps {
                 script {
                     DOCKER_IMAGE = ''
                     //생성할 Docker Image 이름 지정
-                    DOCKER_IMAGE_NAME = "{image 이름 지정}"
+                    DOCKER_IMAGE_NAME = "image 이름 지정"
                     //Container Registry 경로
                     IMAGE_STORAGE = "https://registry.hub.docker.com/"
                     //Container Registry 접근 Credential id
-                    IMAGE_STORAGE_CREDENTIAL = "{jenkins 설정에서 등록한 docker credential의 ID를 넣어줍니다}"
+                    IMAGE_STORAGE_CREDENTIAL = "jenkins 설정에서 등록한 docker credential의 ID를 넣어줍니다"
                     //알림받을 채널
-                    SLACK_CHANNEL = "{사용하고자 하는 slack 채널명 입력}"
+                    SLACK_CHANNEL = "사용하고자 하는 slack 채널명 입력"
                     SLACK_START_AND_FINISH_COLOR = "#778899";
                     SLACK_SUCCESS_COLOR = "#2C953C";
                     SLACK_FAIL_COLOR = "#FF3232";
@@ -22,6 +23,10 @@ pipeline {
                     GIT_COMMIT_AUTHOR = sh(script: "git --no-pager show -s --format=%an ${env.GIT_COMMIT}", returnStdout: true).trim();
                     // Git Commit 메시지
                     GIT_COMMIT_MESSAGE = sh(script: "git --no-pager show -s --format=%B ${env.GIT_COMMIT}", returnStdout: true).trim();
+                    //PR_ID - PullRequest ID number
+                    PR_ID = "${GIT_COMMIT_MESSAGE}".substring("${GIT_COMMIT_MESSAGE}".indexOf('#')+1,"${GIT_COMMIT_MESSAGE}".indexOf(')')).trim();
+                    //PR_BRANCH - PullRequest 를 요청한 branch
+                    PR_BRANCH = "${GIT_COMMIT_MESSAGE}".split("from")[1].split("into")[0].trim();
                 }
             }
             post {
@@ -34,6 +39,12 @@ pipeline {
                         "\n" +
                         "배포 파이프라인이 시작되었습니다.\n" +
                         "${env.JOB_NAME}(${env.BUILD_NUMBER})\n" +
+                        "\n" +
+                        "-GIT_PR_ID-\n" +
+                        ":  ${PR_ID}\n" +
+                        "\n" +
+                        "-GIT_PR_BRANCH-\n" +
+                        ":  ${PR_BRANCH}\n" +
                         "\n" +
                         "-GIT_COMMIT_AUTHOR-\n" +
                         ":  ${GIT_COMMIT_AUTHOR}\n" +
@@ -50,11 +61,14 @@ pipeline {
 
         //Git Checkout
         stage('gitea clone') {
+            when {
+                branch "develop"
+            }
             steps {
                 echo"Cloning Repository"
-                git branch: '{main or dev 등 checkout을 할 branch}',
-                    credentialsId: '{jenkins 에서 등록한 github or gitea or gitlab 등의 credential}',
-                    url: '{github or gitea or gitlab 등 URL}'
+                git branch: 'develop',
+                    credentialsId: 'jenkins 에서 등록한 github or gitea or gitlab 등의 credential',
+                    url: 'github or gitea or gitlab 등 URL'
             }
             post{
                 success {
@@ -81,7 +95,10 @@ pipeline {
         }
 
         //Gradle Build & Test
-        stage('Build & Test') {
+        stage('Build & Test & JacocoTestCoverageVerification') {
+            when {
+                branch "develop"
+            }
             steps {
                 sh '''
                     echo 'Build Gradle Start'
@@ -101,10 +118,10 @@ pipeline {
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
-                        message: "Build & Test 에 실패하였습니다." +
+                        message: "Build & Test 에 실패하였습니다.\n" +
                         "\n" +
                         "<-More info->\n" +
-                        "${env.BUILD_URL}console"
+                        "${env.BUILD_URL}console\n" +
                         "=================================================================="
                     )
                     echo "Build Gradle Fail"
@@ -112,13 +129,34 @@ pipeline {
             }
         }
 
-        //Sonarqube Scan
-        stage("sonarqube") {
+        //Sonarqube Scanner - dev
+        stage("sonarqube analysis-dev") {
+            when {
+                branch "develop"
+            }
             steps{
                 script{
-                    def scannerHome = tool '{jenkins Global Tool Configuration에서 등록한 SonarQube Scanner 이름}';
-                    withSonarQubeEnv(credentialsId:"{jenkins에서 등록한 sonarqube credential}",installationName:'{jenkins 설정에서 등록한 sonarqube 이름}') {
-                    sh "${scannerHome}/bin/sonar-scanner"
+                    def scannerHome = tool 'jenkins Global Tool Configuration에서 등록한 SonarQube Scanner 이름';
+                    withSonarQubeEnv(credentialsId:"jenkins에서 등록한 sonarqube credential",installationName:'jenkins 설정에서 등록한 sonarqube 이름') {
+                    sh "${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.branch.name=master \
+                        -Dsonar.language=java \
+                        -Dsonar.java.source=1.8 \
+                        -Dsonar.sources=src/main/java \
+                        -Dsonar.test=src/test/java \
+                        -Dsonar.test.inclusion=**/*Test.java \
+                        -Dsonar.issuesReport.console.enable=true \
+                        -Dsonar.junit.reportPaths=build/test-results/test \
+                        -Dsonar.java.binaries=build/classes \
+                        -Dsonar.java.coveragePlugin=jacoco \
+                        -Dsonar.coverage.jacoco.xmlReportPaths=build/jacoco/jacoco.xml \
+                        -Dsonar.java.libraries.empty=true \
+                        -Dsonar.sourceEncoding=UTF-8 \
+                        -Dsonar.exclusions=**/dto/**,**/exception/**,**/constant/**,**/SpringInitProjectApplication.java,**/WebRestController.java,**/FileUploadYaml.java \
+                        -Dsonar.java.checkstyle.reportPaths=build/reports/checkstyle-output/checkstyle-report.xml \
+                        -Dsonar.web.javaAdditionalOpts=-javaagent:./extensions/plugins/sonarqube-community-branch-plugin-1.5.0.jar=web \
+                        -Dsonar.ce.javaAdditionalOpts=-javaagent:./extensions/plugins/sonarqube-community-branch-plugin-1.5.0.jar=ce \
+                        "
                     }
                 }
             }
@@ -127,7 +165,7 @@ pipeline {
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
-                        message: "SonarQube Scanning 을 성공하였습니다."
+                        message: "Dev branch SonarQube Scanning 을 성공하였습니다."
                     )
                     echo "Success sonarqube analysis"
                 }
@@ -135,10 +173,67 @@ pipeline {
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
-                        message: "SonarQube Scanning 을 실패하였습니다." +
+                        message: "Dev branch SonarQube Scanning 을 실패하였습니다.\n" +
                         "\n" +
                         "<-More info->\n" +
-                        "${env.BUILD_URL}console"
+                        "${env.BUILD_URL}console\n" +
+                        "=================================================================="
+                    )
+                    echo "Fail sonarqube analysis"
+                }
+            }
+        }
+
+        //Sonarqube Scanner - feature(dev로 merge될 branch), Sonar-bot 을 통한 PR-comment 사용 시 설정
+        stage("sonarqube analysis-feature") {
+            when {
+                branch "develop"
+            }
+            steps{
+                script{
+                    def scannerHome = tool 'SonarQube-Scanner-Feature';
+                    withSonarQubeEnv(credentialsId:"sonarqube-token",installationName:'SonarQube-PR') {
+                    sh "${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.pullrequest.key='${PR_ID}' \
+                        -Dsonar.pullrequest.base=master \
+                        -Dsonar.pullrequest.branch='${PR_BRANCH}' \
+                        -Dsonar.language=java \
+                        -Dsonar.java.source=1.8 \
+                        -Dsonar.sources=src/main/java \
+                        -Dsonar.test=src/test/java \
+                        -Dsonar.test.inclusion=**/*Test.java \
+                        -Dsonar.issuesReport.console.enable=true \
+                        -Dsonar.junit.reportPaths=build/test-results/test \
+                        -Dsonar.java.binaries=build/classes \
+                        -Dsonar.java.coveragePlugin=jacoco \
+                        -Dsonar.coverage.jacoco.xmlReportPaths=build/jacoco/jacoco.xml \
+                        -Dsonar.java.libraries.empty=true \
+                        -Dsonar.sourceEncoding=UTF-8 \
+                        -Dsonar.exclusions=**/dto/**,**/exception/**,**/constant/**,**/SpringInitProjectApplication.java,**/WebRestController.java,**/FileUploadYaml.java \
+                        -Dsonar.java.checkstyle.reportPaths=build/reports/checkstyle-output/checkstyle-report.xml \
+                        -Dsonar.web.javaAdditionalOpts=-javaagent:./extensions/plugins/sonarqube-community-branch-plugin-1.5.0.jar=web \
+                        -Dsonar.ce.javaAdditionalOpts=-javaagent:./extensions/plugins/sonarqube-community-branch-plugin-1.5.0.jar=ce \
+                        "
+                    }
+                }
+            }
+            post{
+                success {
+                    slackSend (
+                        channel: SLACK_CHANNEL,
+                        color: SLACK_SUCCESS_COLOR,
+                        message: "Feature branch SonarQube Scanning 을 성공하였습니다."
+                    )
+                    echo "Success sonarqube analysis"
+                }
+                failure {
+                    slackSend (
+                        channel: SLACK_CHANNEL,
+                        color: SLACK_FAIL_COLOR,
+                        message: "Feature branch SonarQube Scanning 을 실패하였습니다.\n" +
+                        "\n" +
+                        "<-More info->\n" +
+                        "${env.BUILD_URL}console\n" +
                         "=================================================================="
                     )
                     echo "Fail sonarqube analysis"
@@ -148,6 +243,9 @@ pipeline {
 
         //SonarQube Quality Gate
         stage('SonarQube Quality Gate'){
+            when {
+                branch "develop"
+            }
             steps{
                 timeout(time: 1, unit: 'MINUTES') {
                     script{
@@ -166,7 +264,7 @@ pipeline {
             }
             post{
                 success {
-                    sh 'echo "Success sonarqube analysis"'
+                    echo "Success sonarqube analysis"
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
@@ -174,22 +272,25 @@ pipeline {
                     )
                 }
                 failure {
+                    echo "Fail sonarqube analysis"
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
-                        message: "SonarQube Quality Gate 를 통과하지 못하였습니다." +
+                        message: "SonarQube Quality Gate 를 통과하지 못하였습니다.\n" +
                         "\n" +
                         "<-More info->\n" +
-                        "${env.BUILD_URL}console"
+                        "${env.BUILD_URL}console\n" +
                         "=================================================================="
                     )
-                    echo "Fail sonarqube analysis"
                 }
             }
         }
 
         //Dockerfile을 통해 Docker Image 생성
         stage('Build Docker') {
+            when {
+                branch "develop"
+            }
             steps {
                 sh 'echo "Image Build Start"'
                 script {
@@ -198,30 +299,33 @@ pipeline {
             }
             post {
                 success {
+                    sh 'echo "Successfully Build Docker"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
                         message: "Docker Image Build 를 성공하였습니다."
                     )
-                    echo "Successfully Build Docker"
                 }
                 failure {
+                    sh 'echo "Build Docker Fail"'
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
-                        message: "Docker Image Build 를 실패하였습니다." +
+                        message: "Docker Image Build 를 실패하였습니다.\n" +
                         "\n" +
                         "<-More info->\n" +
-                        "${env.BUILD_URL}console"
+                        "${env.BUILD_URL}console\n" +
                         "=================================================================="
                     )
-                    echo "Build Docker Fail"
                 }
             }
         }
 
         //Docker Image를 Docker-hub 에 push
         stage('Push Docker') {
+            when {
+                branch "develop"
+            }
             steps {
                 sh 'echo "Docker Image Push Start"'
                 script {
@@ -245,10 +349,10 @@ pipeline {
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
-                        message: "Docker registry 에 Image push 를 실패하였습니다." +
+                        message: "Docker registry 에 Image push 를 실패하였습니다.\n" +
                         "\n" +
                         "<-More info->\n" +
-                        "${env.BUILD_URL}console"
+                        "${env.BUILD_URL}console\n" +
                         "=================================================================="
                     )
                     echo "Push Docker Fail"
@@ -257,7 +361,7 @@ pipeline {
         }
 
         //nginx 패키지와 docker 패키지를 배포할서버로 보낸 후 deploy.sh을 실행
-        stage('Remote Server Docker Pull & Deploy') {
+        stage('Remote Server Docker Pull') {
             steps([$class: 'BapSshPromotionPublisherPlugin']) {
                 sh 'echo "Remote Server Docker Pull Start"'
                  sshPublisher(
@@ -268,14 +372,7 @@ pipeline {
                             verbose: true,
                             transfers: [
                                 sshTransfer(
-                                    sourceFiles:"nginx/**",
-                                ),
-                                sshTransfer(
-                                    sourceFiles:"docker/**",
-                                    execCommand: "chmod +x /home/ubuntu/docker/deploy.sh"
-                                ),
-                                sshTransfer(
-                                    execCommand: "/home/ubuntu/docker/deploy.sh"
+                                    execCommand: "docker pull gunyoung/dev:latest"
                                 )
                             ]
                         )
@@ -287,7 +384,7 @@ pipeline {
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_SUCCESS_COLOR,
-                        message: "Docker pull & Deploy 를 성공하였습니다."
+                        message: "Docker pull 을 성공하였습니다."
                     )
                     echo "Completed Remote Server Docker pull"
                 }
@@ -295,10 +392,10 @@ pipeline {
                     slackSend (
                         channel: SLACK_CHANNEL,
                         color: SLACK_FAIL_COLOR,
-                        message: "Docker pull & Deploy 를 실패하였습니다." +
+                        message: "Docker pull 을 실패하였습니다.\n" +
                         "\n" +
                         "<-More info->\n" +
-                        "${env.BUILD_URL}console"
+                        "${env.BUILD_URL}console\n" +
                         "=================================================================="
                     )
                     echo "Fail Remote Server Docker Pull"
@@ -306,7 +403,119 @@ pipeline {
             }
         }
 
-        //위의 모든  tage들이 성공하면 slack 알림을 보냄
+        //(dev 환경)nginx 패키지와 docker 패키지를 배포할서버로 보낸 후 deploy.sh을 실행
+        stage('Dev-Remote Server Exec deploy.sh') {
+            when {
+                branch "develop"
+            }
+            steps([$class: 'BapSshPromotionPublisherPlugin']) {
+                sh 'echo "Remote Server Deploy start"'
+                 sshPublisher(
+                    continueOnError: false, failOnError: true,
+                    publishers: [
+                        sshPublisherDesc(
+                            configName: "springboot-remote-server",
+                            verbose: true,
+                            transfers: [
+                                sshTransfer(
+                                    sourceFiles:"nginx/**",
+                                ),
+                                sshTransfer(
+                                    sourceFiles:"docker-dev/**",
+                                    execCommand: "chmod +x /home/ec2-user/docker-dev/deploy.sh"
+                                ),
+                                sshTransfer(
+                                    execCommand: "/home/ec2-user/docker-dev/deploy.sh"
+                                ),
+                                sshTransfer(
+                                    execCommand: 'docker image prune -f --filter="dangling=true"'
+                                )
+                            ]
+                        )
+                    ]
+                 )
+            }
+            post {
+                success {
+                    slackSend (
+                        channel: SLACK_CHANNEL,
+                        color: SLACK_SUCCESS_COLOR,
+                        message: "dev 환경 배포를를 성공하였습니다."
+                    )
+                    echo "Completed Remote Server Deploy"
+                }
+                failure {
+                    slackSend (
+                        channel: SLACK_CHANNEL,
+                        color: SLACK_FAIL_COLOR,
+                        message: "dev 환경 배포를 실패하였습니다.\n" +
+                        "\n" +
+                        "<-More info->\n" +
+                        "${env.BUILD_URL}console\n" +
+                        "=================================================================="
+                    )
+                    echo "Fail Remote Server Deploy"
+                }
+            }
+        }
+
+        //(operation 환경)nginx 패키지와 docker 패키지를 배포할서버로 보낸 후 deploy.sh을 실행
+        stage('Operation-Remote Server Exec deploy.sh') {
+            when {
+                branch "main"
+            }
+            steps([$class: 'BapSshPromotionPublisherPlugin']) {
+                sh 'echo "Remote Server Deploy Start"'
+                 sshPublisher(
+                    continueOnError: false, failOnError: true,
+                    publishers: [
+                        sshPublisherDesc(
+                            configName: "springboot-remote-server",
+                            verbose: true,
+                            transfers: [
+                                sshTransfer(
+                                    sourceFiles:"nginx/**",
+                                ),
+                                sshTransfer(
+                                    sourceFiles:"docker-operation/**",
+                                    execCommand: "chmod +x /home/ec2-user/docker-operation/deploy.sh"
+                                ),
+                                sshTransfer(
+                                    execCommand: "/home/ec2-user/docker-operation/deploy.sh"
+                                ),
+                                sshTransfer(
+                                    execCommand: 'docker image prune -f --filter="dangling=true"'
+                                )
+                            ]
+                        )
+                    ]
+                 )
+            }
+            post {
+                success {
+                    slackSend (
+                        channel: SLACK_CHANNEL,
+                        color: SLACK_SUCCESS_COLOR,
+                        message: "operation 환경 배포를를 성공하였습니다."
+                    )
+                    echo "Completed Remote Server Deploy"
+                }
+                failure {
+                    slackSend (
+                        channel: SLACK_CHANNEL,
+                        color: SLACK_FAIL_COLOR,
+                        message: "operation 환경 배포를 실패하였습니다.\n" +
+                        "\n" +
+                        "<-More info->\n" +
+                        "${env.BUILD_URL}console\n" +
+                        "=================================================================="
+                    )
+                    echo "Fail Remote Server Deploy"
+                }
+            }
+        }
+
+        //위의 모든  stage 들이 성공하면 slack 알림을 보냄
         stage('Finish Successfully'){
             steps {
                 sh 'echo "All stages are successfully finished !"'
@@ -318,6 +527,7 @@ pipeline {
                         color: SLACK_START_AND_FINISH_COLOR,
                         message:
                         "배포가 성공적으로 완료되었습니다.\n" +
+                        "${env.JOB_NAME}(${env.BUILD_NUMBER})\n" +
                         " \n" +
                         "<-More info->\n" +
                         "${env.BUILD_URL}\n"+
@@ -329,5 +539,4 @@ pipeline {
     } //stages 끝나는 지점
 
 }
-
 

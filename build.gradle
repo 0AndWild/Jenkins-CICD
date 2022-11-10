@@ -1,14 +1,41 @@
+//querydsl 추가
+buildscript {
+    dependencies {
+        classpath("gradle.plugin.com.ewerk.gradle.plugins:querydsl-plugin:1.0.10")
+//        classpath "org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:3.0"
+    }
+}
+
 plugins {
-    id 'org.springframework.boot' version '2.7.5'
-    id 'io.spring.dependency-management' version '1.0.15.RELEASE'
+    id 'org.springframework.boot' version '2.7.3'
+    id 'io.spring.dependency-management' version '1.0.13.RELEASE'
     id 'java'
     //Jacoco 플러그인 추가
     id 'jacoco'
+    //Checkstyle(코드컨벤션 체크) 플러그인 추가
+    id 'checkstyle'
+    //checkstyle과 함께 사용
+    id 'org.ec4j.editorconfig' version '0.0.3'
+    //gradle 6.0이상과 lombok사이 호환성 문제로 빌드시 querydsl에서 에러 발생하여 추가
+    //franzbecker 는 lombok 어노테이션의 프로세스를 단순화하는 플러그인
+    id "io.franzbecker.gradle-lombok" version "3.0.0"
 }
 
-group = 'com.example'
+//jacoco
+jacoco {
+    toolVersion = '0.8.7'
+}
+
+jar {
+    enabled = false
+}
+
+group = 'com.junyharang'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = '11'
+
+//apply plugin: 'io.spring.dependency-management'
+apply plugin: "com.ewerk.gradle.plugins.querydsl"
 
 configurations {
     compileOnly {
@@ -24,45 +51,82 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     compileOnly 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'com.h2database:h2'
-    runtimeOnly 'com.mysql:mysql-connector-j'
+    runtimeOnly 'mysql:mysql-connector-java'
+    runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    // swagger 의존성 추가
+    // https://mvnrepository.com/artifact/io.springfox/springfox-boot-starter
+    implementation 'io.springfox:springfox-boot-starter:3.0.0'
+    implementation 'io.springfox:springfox-swagger2:3.0.0'
+    implementation 'io.springfox:springfox-swagger-ui:3.0.0'
+
+    // Validation을 위한 의존성 추가
+    // https://mvnrepository.com/artifact/javax.validation/validation-api
+    implementation 'javax.validation:validation-api:2.0.1.Final'
+
+    // Query dsl 의존성 추가
+    implementation 'com.querydsl:querydsl-jpa'
+    implementation 'com.querydsl:querydsl-apt'
+
+    // Slack Web Hook 의존성 추가
+    implementation 'com.github.maricn:logback-slack-appender:1.6.1'
+
+    // Test Code에서 Slf4j 이용을 위한 의존성 추가
+    testCompileOnly 'org.projectlombok:lombok:1.18.20'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.20'
+
+    // Mockito 의존성 추가
+    // https://mvnrepository.com/artifact/com.google.code.gson/gson
+    implementation 'com.google.code.gson:gson:2.9.1'
+
+    // Entity DTO 간 상호 변환을 위한 ModelMapper 의존성 추가
+    implementation group: 'org.modelmapper', name: 'modelmapper', version: '2.3.8'
+
+    //@ConfigurationProperties 사용위해 추가
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
 }
 
 tasks.named('test') {
     useJUnitPlatform()
     finalizedBy jacocoTestReport
+
 }
 
-//jacoco
-jacoco {
-    toolVersion = '0.8.7'
-}
-
-//Jacoco 추가 (추가작업 필요)
+//Jacoco 추가
 jacocoTestReport {
     dependsOn test
     reports {
         html.enabled true
         xml.enabled true
         csv.enabled true
+        xml.destination = file("${buildDir}/jacoco/jacoco.xml")
     }
-    //afterEvaluate는 gradle의 빌드 라이프 사이클에 대한 메서드로 프로젝트가 평가된 후 실행할 수 있게 해줌
+
+    def Qdomains = []
+    for (qPattern in '**/QA'..'**/QZ') {
+        Qdomains.add(qPattern + '*')
+    }
+
     afterEvaluate {
         classDirectories.setFrom(
                 files(classDirectories.files.collect {
                     fileTree(dir: it, excludes: [
-                            '**/SpringInitProjectApplication*',
-                            '**/*Request*',
-                            '**/*Response*',
-                            '**/*Dto*',
-                            '**/*OAuthClient*',
-                            '**/*Interceptor*',
-                            '**/*Exception*',
-                            '**/*Pagination*',
-                            "**/Q*.class"
-                    ])
+                            '**.SpringInitProjectApplication*',
+                            '**.*Request*',
+                            '**.*Response*',
+                            '**.constant.**',
+                            '**.config.**',
+                            '**.common.**',
+                            '**.environment.**',
+                            '**.*Dto*',
+                            '**.*OAuthClient*',
+                            '**.*Interceptor*',
+                            '**.*Exception*'
+                    ] + Qdomains)
                 })
         )
     }
@@ -70,21 +134,26 @@ jacocoTestReport {
 }
 
 jacocoTestCoverageVerification {
+    def Qdomains = []
+    for (qPattern in '*.QA'..'*.QZ') {
+        Qdomains.add(qPattern + '*')
+    }
+
     violationRules {
         rule {
             element = 'CLASS'
             enabled = true
-            //라인커버리지 제한 80%
+
             limit {
                 counter = 'LINE'
                 value = 'COVEREDRATIO'
-                minimum = 0.80
+                minimum = 0.7
             }
-            //메서드커버리지 제한 80%
+
             limit {
                 counter = 'METHOD'
                 value = 'COVEREDRATIO'
-                minimum = 0.80
+                minimum = 0.8
             }
 //            // 브랜치 커버리지 제한 80%
 //            limit {
@@ -98,19 +167,83 @@ jacocoTestCoverageVerification {
 //                value = 'TOTALCOUNT'
 //                maximum = 200
 //            }
+
             //커버리지를 측정할 때 제외할 클래스를 지정 - 패키지 레벨의 경로로 지정하여야 하고 경로에는 * 과 ?를 사용할 수 있음
             //ex) 패키지+클래스명
             excludes = [
                     '**.*SpringInitProjectApplication*',
                     '**.*Request*',
                     '**.*Response*',
+                    '**.constant.**',
+                    '**.config.**',
+                    '**.common.**',
+                    '**.environment.**',
                     '**.*Dto*',
                     '**.*OAuthClient*',
                     '**.*Interceptor*',
-                    '**.*Exception*',
-                    '**/*Pagination*',
-                    "**/Q*.class"
-            ]
+                    '**.*Exception*'
+            ] + Qdomains
         }
     }
 }
+
+//checkstyle 설정
+checkstyle {
+    ignoreFailures = true //분석결과 예외가 발생하면 빌드실패 발생을 제외
+//    maxWarnings = 0 // 규칙이 어긋나는 코드가 하나라도 있을 경우 빌드 fail
+    configFile = file('config/checkstyle/naver-checkstyle-rules.xml') // 설정 파일 경로 지정
+    configProperties = ["suppressionFile": "config/checkstyle/naver-checkstyle-suppressions.xml"]
+    reportsDir = file("build/reports/checkstyle-output")
+    toolVersion = "10.2" // 처음에 낮은 버전을 사용했더니 깨지는 현상이 있었다. 설정파일의 내용에 맞는 버전을 선택
+    sourceSets = [sourceSets.main] //지정 안해주면 빌드시 compileQuerydslJava 오류 발생
+    showViolations = false //Whether or not rule violations are to be displayed on the console.
+}
+
+
+check.dependsOn editorconfigCheck
+compileJava.options.encoding = 'UTF-8'
+compileTestJava.options.encoding = 'UTF-8'
+
+checkstyleMain {
+    reports {
+        xml.destination = file("${checkstyle.reportsDir}/checkstyle-report.xml") // 리포트 파일의 위치 및 파일명 지정
+    }
+}
+
+// Query dsl task 추가
+/*build시 에러나서 아래와같이 변경*/
+//def querydslDir = 'src/main/generated'
+def querydslDir = "$buildDir/generated/querydsl"
+
+querydsl {
+    library = "com.querydsl:querydsl-apt"
+    jpa = true
+    querydslSourcesDir = querydslDir
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java', querydslDir]
+        }
+    }
+}
+
+compileQuerydsl {
+    options.annotationProcessorPath = configurations.querydsl
+}
+
+configurations {
+    querydsl.extendsFrom compileClasspath
+}
+
+//스프링부트에서 application 을 프로파일 환경에 맞게 가져올 때
+//공통으로 사용할 기본 application 이 있고
+//프로파일 마다 각각의 application-${profile}을 같이 가져오게 세팅했다면 중복으로 가져왔다는 에러를 뱉는다.
+//프로필 설정에 맞는 yml 파일을 가져오게 하기 위해 INCLUE로 설정
+tasks {
+    processResources {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+}
+
