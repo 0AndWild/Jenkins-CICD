@@ -9,8 +9,8 @@
 
 모든 과정은 Blog 를 통해 설명하도록 하겠습니다 =)
 
-####(1편)-Ec2 인스턴스 생성, Jenkins 설치, Gitea 연결, Jacoco, CheckStyle 설정
+#### (1편)-Ec2 인스턴스 생성, Jenkins 설치, Gitea 연결, Jacoco, CheckStyle 설정
 https://0andwild.tistory.com/35
 
-####(2편) - SonarQube 설치 및 설정, Jenkins & SonarQube 연동 
+#### (2편) - SonarQube 설치 및 설정, Jenkins & SonarQube 연동 
 https://0andwild.tistory.com/36
