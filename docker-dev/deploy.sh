@@ -54,7 +54,7 @@ if [ -n "$EXIST_AFTER_A" ] && [ -n "$EXIST_AFTER_B" ]; then
 
   for RETRY_COUNT in {1..10}
   do
-    RESPONSE=$(curl -s http://3.36.66.225:${IDLE_PORT})
+    RESPONSE=$(curl -s http://{nginx 서버 ip 주소}:${IDLE_PORT})
     UP_COUNT=$(echo ${RESPONSE} | grep "timestamp" | wc -l)
 
     if [ ${UP_COUNT} -ge 1 ]
